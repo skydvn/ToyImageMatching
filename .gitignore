@@ -1,0 +1,13 @@
+vqgan_clip.egg-info
+vqgan_clip/__pycache__/*
+vqgan_clip/__pycache__/__init__.cpython-38.pyc
+*.pyc
+checkpoints/*
+.env
+system/core/__pycache__/*
+system/CLIP
+system/taming-transformers
+system/vqgan_imagenet_f16_1024.ckpt
+system/vqgan_imagenet_f16_16384.ckpt
+system/vqgan_imagenet_f16_1024.yaml
+system/vqgan_imagenet_f16_16384.yaml
