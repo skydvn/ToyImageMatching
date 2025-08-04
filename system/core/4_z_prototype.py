@@ -106,8 +106,13 @@ opt = optim.Adam([z], lr=args.step_size)
 """ ================== ========== ================== """
 
 """ ================== Loss & Epoch ================== """
-import torch
-import torch.nn.functional as F
+@torch.no_grad()
+def checkin(i, losses):
+    losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
+    tqdm.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
+    out = synth(z)
+    TF.to_pil_image(out[0].cpu()).save('progress.png')
+    display.display(display.Image('progress.png'))
 
 def proto_loss(z, support_images, support_labels, network, temperature=0.1):
     """
@@ -145,15 +150,17 @@ def proto_loss(z, support_images, support_labels, network, temperature=0.1):
         for lbl in unique_labels
     ])  # [C, D]
 
-    # Step 3: Normalize for cosine similarity
-    z_protos = F.normalize(z_protos, dim=-1)
-    true_protos = F.normalize(true_protos, dim=-1)
+    # Flatten spatial dimensions: [10, 256, 2, 2] → [10, 1024]
+    z_protos_flat = z_protos.view(z_protos.size(0), -1)
+    true_protos_flat = true_protos.view(true_protos.size(0), -1)
 
-    print(f"z_protos: {z_protos.size()} || true_protos: {true_protos.size()}")
-    print(f"syn_image: {syn_images[0].size()} || syn_image: {syn_images[1].size()}")
+    # Normalize for cosine similarity (optional but common in contrastive learning)
+    z_protos_flat = F.normalize(z_protos_flat, dim=-1)
+    true_protos_flat = F.normalize(true_protos_flat, dim=-1)
 
-    # Step 4: Contrastive loss
-    logits = torch.matmul(z_protos, true_protos.T) / temperature  # [C, C]
+    # Matrix multiplication: [10, 1024] @ [1024, 10] → [10, 10]
+    logits = torch.matmul(z_protos_flat, true_protos_flat.T)
+
     targets = torch.arange(classes).to(z.device)
 
     loss = F.cross_entropy(logits, targets)
