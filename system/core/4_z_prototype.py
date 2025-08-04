@@ -15,9 +15,8 @@ from taming.models import cond_transformer, vqgan
 import torch
 from torch import nn, optim
 from torch.nn import functional as F
-from torchvision import transforms
 from torchvision.transforms import functional as TF
-
+from IPython.display import display, Image
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
 
@@ -106,13 +105,33 @@ opt = optim.Adam([z], lr=args.step_size)
 """ ================== ========== ================== """
 
 """ ================== Loss & Epoch ================== """
-@torch.no_grad()
-def checkin(i, losses):
-    losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
-    tqdm.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
-    out = synth(z)
-    TF.to_pil_image(out[0].cpu()).save('progress.png')
-    display.display(display.Image('progress.png'))
+def checkin(i, losses, z, synth, save_path='output'):
+    os.makedirs(save_path, exist_ok=True)
+
+    # Handle both single loss or list of losses
+    if isinstance(losses, (list, tuple)):
+        losses_str = ', '.join(f'{loss.item():.4f}' for loss in losses)
+        total_loss = sum(losses).item()
+    else:
+        losses_str = f'{losses.item():.4f}'
+        total_loss = losses.item()
+
+    tqdm.write(f'Epoch/Step: {i}, Total Loss: {total_loss:.4f}, Individual Losses: {losses_str}')
+
+    # Generate and save synthesized image
+    for cls in num_classes:
+        syn_image = network.decoder(z[cls].unsqueeze(0))  # [1, C, H, W]
+        img = TF.to_pil_image(syn_image[0].cpu().clamp(0, 1))  # Clamp to [0, 1] for valid image
+
+        filename = f"image_class_{idx}.png"
+        filepath = os.path.join(save_path, filename)
+
+        # Save the image
+        img.save(filepath)
+
+    # Display image
+    display(Image(save_path))
+
 
 def proto_loss(z, support_images, support_labels, network, temperature=0.1):
     """
@@ -159,7 +178,7 @@ def proto_loss(z, support_images, support_labels, network, temperature=0.1):
     true_protos_flat = F.normalize(true_protos_flat, dim=-1)
 
     # Matrix multiplication: [10, 1024] @ [1024, 10] → [10, 10]
-    logits = torch.matmul(z_protos_flat, true_protos_flat.T)
+    logits = torch.matmul(z_protos_flat, true_protos_flat.T) / temperature
 
     targets = torch.arange(classes).to(z.device)
 
