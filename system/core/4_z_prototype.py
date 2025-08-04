@@ -39,6 +39,7 @@ args = argparse.Namespace(
     seed=0,
     batch_size=32,
     temperature=0.5,
+    num_epochs=1000,
 )
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
