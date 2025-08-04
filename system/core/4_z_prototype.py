@@ -105,7 +105,7 @@ opt = optim.Adam([z], lr=args.step_size)
 """ ================== ========== ================== """
 
 """ ================== Loss & Epoch ================== """
-def checkin(i, losses, z, synth, save_path='output'):
+def checkin(i, losses, z, network, save_path='output'):
     os.makedirs(save_path, exist_ok=True)
 
     # Handle both single loss or list of losses
