@@ -3,6 +3,7 @@ import io
 import math
 from pathlib import Path
 import sys
+import os
 
 sys.path.append('../taming-transformers')
 sys.path.append('..')
@@ -31,16 +32,17 @@ args = argparse.Namespace(
     clip_model='ViT-B/32',
     vqgan_config='../vqgan_imagenet_f16_1024.yaml',
     vqgan_checkpoint='../vqgan_imagenet_f16_1024.ckpt',
-    step_size=0.05,
+    step_size=0.1,
     cutn=64,
     cut_pow=1.,
-    display_freq=50,
+    display_freq=10,
     seed=0,
-    batch_size=32,
+    batch_size=512,
     temperature=0.5,
     num_epochs=1000,
 )
 
+# device = torch.device("cpu")
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('Using device:', device)
 
@@ -119,18 +121,17 @@ def checkin(i, losses, z, network, save_path='output'):
     tqdm.write(f'Epoch/Step: {i}, Total Loss: {total_loss:.4f}, Individual Losses: {losses_str}')
 
     # Generate and save synthesized image
-    for cls in num_classes:
-        syn_image = network.decoder(z[cls].unsqueeze(0))  # [1, C, H, W]
+    for cls in range(num_classes):
+        z_q = vector_quantize(z[cls].movedim(1, 3), network.quantize.embedding.weight).movedim(3, 1)
+        syn_image = clamp_with_grad(network.decode(z_q).add(1).div(2), 0, 1)
+
         img = TF.to_pil_image(syn_image[0].cpu().clamp(0, 1))  # Clamp to [0, 1] for valid image
 
-        filename = f"image_class_{idx}.png"
+        filename = f"image_class_{cls}.png"
         filepath = os.path.join(save_path, filename)
 
         # Save the image
         img.save(filepath)
-
-    # Display image
-    display(Image(save_path))
 
 
 def proto_loss(z, support_images, support_labels, network, temperature=0.1):
@@ -153,8 +154,10 @@ def proto_loss(z, support_images, support_labels, network, temperature=0.1):
     z_protos = []
 
     # Step 1: Decode each latent z to synthetic image and re-encode to get z_proto
-    for cls_idx in range(classes):
-        syn_image = network.decoder(z[cls_idx].unsqueeze(0))  # [1, C, H, W]
+    for cls in range(classes):
+        z_q = vector_quantize(z[cls].movedim(1, 3), network.quantize.embedding.weight).movedim(3, 1)
+        syn_image = clamp_with_grad(network.decode(z_q).add(1).div(2), 0, 1)
+
         syn_images.append(syn_image)
         z_proto = network.encoder(syn_image)  # [1, D]
         z_protos.append(z_proto.squeeze(0))  # [D]
@@ -188,6 +191,7 @@ def proto_loss(z, support_images, support_labels, network, temperature=0.1):
 
 
 def train_epoch(epoch, z, network, opt, args, z_min, z_max, spt_loader):
+    losses = []
     for batch_idx, (support_images, support_labels) in enumerate(spt_loader):
         support_images = support_images.to(z.device)
         support_labels = support_labels.to(z.device)
@@ -195,16 +199,15 @@ def train_epoch(epoch, z, network, opt, args, z_min, z_max, spt_loader):
         opt.zero_grad()
 
         loss = proto_loss(z, support_images, support_labels, network, temperature=args.temperature)
-
-        if batch_idx % args.display_freq == 0:
-            checkin(epoch, batch_idx, loss)
-
+        losses.append(loss)
         loss.backward()
         opt.step()
 
         with torch.no_grad():
             z.copy_(torch.clamp(z, min=z_min, max=z_max))
 
+    if epoch % args.display_freq == 0:
+        checkin(epoch, losses, z, network, save_path='output')
 
 for epoch in range(args.num_epochs):
     train_epoch(epoch, z, VQGAN, opt, args, z_min, z_max, support_loader)
