@@ -149,6 +149,9 @@ def proto_loss(z, support_images, support_labels, network, temperature=0.1):
     z_protos = F.normalize(z_protos, dim=-1)
     true_protos = F.normalize(true_protos, dim=-1)
 
+    print(f"z_protos: {z_protos.size()} || true_protos: {true_protos.size()}")
+    print(f"syn_image: {syn_images[0].size()} || syn_image: {syn_images[1].size()}")
+
     # Step 4: Contrastive loss
     logits = torch.matmul(z_protos, true_protos.T) / temperature  # [C, C]
     targets = torch.arange(classes).to(z.device)
